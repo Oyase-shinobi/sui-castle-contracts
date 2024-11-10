@@ -10,7 +10,6 @@ module sui_castle::sui_castle {
     use sui::bcs;
 
     // === Errors ===
-    const E_NOT_AUTHORIZED: u64 = 1;
     const E_PLAYER_ACCOUNT_NOT_EXIST: u64 = 2;
     const E_ROUND_ALREADY_PLAYED: u64 = 3;
     const E_PREVIOUS_ROUND_NOT_CERTIFIED: u64 = 4;
@@ -23,11 +22,6 @@ module sui_castle::sui_castle {
     const CLAIM_COOLDOWN: u64 = 86400000; // 24 hours in milliseconds
 
     // === Structs ===
-    public struct GameAdmin has key {
-        id: UID,
-        admins: vector<address>
-    }
-
     public struct PlayerAccount has key, store {
         id: UID,
         name: String,
@@ -89,18 +83,12 @@ module sui_castle::sui_castle {
 
     // === Init Function ===
     fun init(ctx: &mut TxContext) {
-        let admin = GameAdmin {
-            id: object::new(ctx),
-            admins: vector[tx_context::sender(ctx)]
-        };
-        
         let game_state = GameState {
             id: object::new(ctx),
             players: vector::empty(),
         };
 
         transfer::share_object(game_state);
-        transfer::transfer(admin, tx_context::sender(ctx));
     }
 
     // === Game Functions ===
@@ -180,13 +168,11 @@ module sui_castle::sui_castle {
     }
 
     public entry fun add_certificate_round1(
-        admin: &GameAdmin,
         player_account: &mut PlayerAccount,
         points_earned: u64,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        assert!(vector::contains(&admin.admins, &tx_context::sender(ctx)), E_NOT_AUTHORIZED);
         assert!(player_account.round1_played, E_ROUND_NOT_PLAYED);
         player_account.round1_certified = true;
         player_account.round1_finish_time = clock::timestamp_ms(clock);
@@ -194,13 +180,11 @@ module sui_castle::sui_castle {
     }
 
     public entry fun add_certificate_round2(
-        admin: &GameAdmin,
         player_account: &mut PlayerAccount,
         points_earned: u64,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        assert!(vector::contains(&admin.admins, &tx_context::sender(ctx)), E_NOT_AUTHORIZED);
         assert!(player_account.round2_played, E_ROUND_NOT_PLAYED);
         player_account.round2_certified = true;
         player_account.round2_finish_time = clock::timestamp_ms(clock);
@@ -208,13 +192,11 @@ module sui_castle::sui_castle {
     }
 
     public entry fun add_certificate_round3(
-        admin: &GameAdmin,
         player_account: &mut PlayerAccount,
         points_earned: u64,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        assert!(vector::contains(&admin.admins, &tx_context::sender(ctx)), E_NOT_AUTHORIZED);
         assert!(player_account.round3_played, E_ROUND_NOT_PLAYED);
         player_account.round3_certified = true;
         player_account.round3_finish_time = clock::timestamp_ms(clock);
@@ -266,15 +248,6 @@ module sui_castle::sui_castle {
         
         player_account.credits = player_account.credits + 3;
         player_account.last_claim_time = current_time;
-    }
-
-    public entry fun admin_add_credits(
-        admin: &GameAdmin,
-        player_account: &mut PlayerAccount,
-        ctx: &mut TxContext
-    ) {
-        assert!(vector::contains(&admin.admins, &tx_context::sender(ctx)), E_NOT_AUTHORIZED);
-        player_account.credits = player_account.credits + 10;
     }
 
     // === View Functions ===

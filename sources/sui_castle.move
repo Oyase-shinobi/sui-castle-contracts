@@ -1,4 +1,27 @@
 module sui_castle::sui_castle {
+    /*
+        SUI Castle is a blockchain game where players can:
+        - Create an account and receive an initial hero
+        - Play through 3 rounds of challenges
+        - Earn points, gold and credits by completing rounds
+        - Open treasure chests after completing rounds
+        - Buy additional heroes with gold
+        - Compete on the leaderboard based on points earned
+        
+        Key features:
+        - Each round requires 1 credit to play
+        - Players must complete and certify previous round before advancing
+        - Daily cooldown on claiming free credits and gold
+        - Pseudo-random rewards from treasure chests and gold claims using clock and tx hash
+        - Top 10 players shown on leaderboard
+        
+        Note: True randomness is not possible on-chain. The game uses pseudo-random 
+        number generation based on transaction hash and timestamp for gameplay mechanics.
+        This is not cryptographically secure and should not be used for high-value
+        randomization needs.
+    */
+
+    // >>>>>> Imports <<<<<<
     use sui::object::{Self, UID, ID};
     use sui::transfer;
     use sui::tx_context::{Self, TxContext};
@@ -9,7 +32,10 @@ module sui_castle::sui_castle {
     use sui::hash::keccak256;
     use sui::bcs;
     use sui::event;
-
+    use sui::random::{Self, Random, RandomGenerator};
+    // >>>>>> Imports <<<<<<
+    
+    // >>>>>> Errors <<<<<<
     const E_PLAYER_ACCOUNT_NOT_EXIST: u64 = 2;
     const E_ROUND_ALREADY_PLAYED: u64 = 3;
     const E_PREVIOUS_ROUND_NOT_CERTIFIED: u64 = 4;
@@ -20,39 +46,21 @@ module sui_castle::sui_castle {
     const E_INSUFFICIENT_GOLD: u64 = 9;
     const HERO_PRICE: u64 = 100;
     const CLAIM_COOLDOWN: u64 = 86400000;
+    // >>>>>> Errors <<<<<<
 
+    // >>>>>> Objects <<<<<<
+    public struct GameState has key {
+        id: UID,
+        players: vector<address>,
+    }
+    // >>>>>> Objects <<<<<<
+    
+    // >>>>>> Structs <<<<<<
     public struct Hero has key, store {
         id: UID,
         owner: address,
         level: u64,
         created_at: u64,
-    }
-
-    public struct HeroMinted has copy, drop {
-        hero_id: ID,
-        owner: address,
-        created_at: u64,
-    }
-
-    public struct PlayerInfoQueried has copy, drop {
-        player_address: address,
-        name: String,
-        hero_owned: u64,
-        current_round: u8,
-        timestamp: u64,
-    }
-
-    public struct PlayerCreditQueried has copy, drop {
-        player_address: address,
-        credits: u64,
-        timestamp: u64,
-    }
-
-    public struct LeaderboardQueried has copy, drop {
-        queried_by: address,
-        timestamp: u64,
-        top_player: address,
-        top_score: u64,
     }
 
     public struct PlayerAccount has key, store {
@@ -82,11 +90,6 @@ module sui_castle::sui_castle {
         point: u64,
     }
 
-    public struct GameState has key {
-        id: UID,
-        players: vector<address>,
-    }
-
     public struct PlayerInfo has copy, drop {
         name: String,
         address_id: address,
@@ -102,11 +105,40 @@ module sui_castle::sui_castle {
         last_claim_time: u64,
         point: u64,
     }
+    // >>>>>> Structs <<<<<<
+
+    // >>>>>> Events <<<<<<
+    public struct PlayerInfoQueried has copy, drop {
+        player_address: address,
+        name: String,
+        hero_owned: u64,
+        current_round: u8,
+        timestamp: u64,
+    }
+
+    public struct HeroMinted has copy, drop {
+        hero_id: ID,
+        owner: address,
+        created_at: u64,
+    }
+
+    public struct PlayerCreditQueried has copy, drop {
+        player_address: address,
+        credits: u64,
+        timestamp: u64,
+    }
+
+    public struct LeaderboardQueried has copy, drop {
+        queried_by: address,
+        timestamp: u64,
+        top_player: address,
+        top_score: u64,
+    }
 
     public struct LeaderboardInfo has copy, drop {
-        name: String,
-        address_id: address,
-        point: u64,
+        pub name: String,
+        pub address_id: address,
+        pub point: u64,
     }
 
     public struct PlayerCreated has copy, drop {
@@ -131,7 +163,9 @@ module sui_castle::sui_castle {
         gold_amount: u64,
         timestamp: u64,
     }
+    // >>>>>> Events <<<<<<
 
+    // >>>>>> Initialization <<<<<<
     fun init(ctx: &mut TxContext) {
         let game_state = GameState {
             id: object::new(ctx),
@@ -139,7 +173,9 @@ module sui_castle::sui_castle {
         };
         transfer::share_object(game_state);
     }
+    // >>>>>> Initialization <<<<<<
 
+    // >>>>>> Entry Functions <<<<<<
     public entry fun create_account(
         game_state: &mut GameState,
         name: String,
@@ -391,7 +427,9 @@ module sui_castle::sui_castle {
             timestamp: current_time,
         });
     }
- 
+    // >>>>>> Entry Functions <<<<<<
+
+    // >>>>>> Get Functions <<<<<<
     public fun get_player_info(
         player_account: &PlayerAccount,
         clock: &Clock,
@@ -440,7 +478,7 @@ module sui_castle::sui_castle {
 
     public fun get_top_players_by_points(
         game_state: &GameState,
-        player_account: &PlayerAccount,
+        player_accounts: &vector<PlayerAccount>,
         clock: &Clock,
         ctx: &TxContext
     ): vector<LeaderboardInfo> {
@@ -451,10 +489,12 @@ module sui_castle::sui_castle {
         
         while (i < len) {
             let player_address = *vector::borrow(players, i);
+            let player_account = vector::borrow(player_accounts, i);
+            
             let player_info = LeaderboardInfo {
-                name: player_account.name,  
+                name: player_account.name,
                 address_id: player_address,
-                point: player_account.point, 
+                point: player_account.point,
             };
             vector::push_back(&mut leaderboard, player_info);
             i = i + 1;
@@ -476,22 +516,34 @@ module sui_castle::sui_castle {
         leaderboard
     }
 
-
-    
-    fun generate_random_seed(clock: &Clock, ctx: &TxContext): u64 {
-        let mut sender_bytes = bcs::to_bytes(&tx_context::sender(ctx));
-        let time_bytes = bcs::to_bytes(&clock::timestamp_ms(clock));
-        vector::append(&mut sender_bytes, time_bytes);
-        let hash = keccak256(&sender_bytes);
+    public fun get_top_players_by_points_2(
+        game_state: &GameState,
+        clock: &Clock,
+        ctx: &TxContext
+    ): vector<LeaderboardInfo> {
+        let players = &game_state.players;
+        let mut leaderboard = vector::empty<LeaderboardInfo>();
+        let mut i = 0;
+        let len = vector::length(players);
         
-        let mut value = 0u64;
-        let mut i = 0u64;
-        while (i < 8) {
-            value = value << 8;
-            value = value + (*vector::borrow(&hash, i as u64) as u64);
+        while (i < len) {
+            let player_address = *vector::borrow(players, i);
+            if (let Some(player_info) = get_player_info(player_address)) {
+                vector::push_back(&mut leaderboard, player_info);
+            };
             i = i + 1;
         };
-        value
+
+        sort_leaderboard(&mut leaderboard);
+        leaderboard
+    }
+    // >>>>>> Get Functions <<<<<<
+    
+    // >>>>>> Helper Functions <<<<<<
+    
+    fun generate_random_seed(r: &Random, ctx: &mut TxContext): u64 {
+        let mut generator = random::new_generator(r, ctx);
+        random::generate_u64(&mut generator)
     }
 
     fun sort_leaderboard(leaderboard: &mut vector<LeaderboardInfo>) {
@@ -510,4 +562,5 @@ module sui_castle::sui_castle {
             i = i + 1;
         }
     }
+    // >>>>>> Helper Functions <<<<<<
 }

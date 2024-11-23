@@ -1,4 +1,7 @@
-Sui Castle: A Blockchain-Powered Adventure Game
+# Sui Castle: A Blockchain-Powered Adventure Game
+
+
+
 Sui Castle is a blockchain-based game developed using the Move programming language on the Sui blockchain. This contract serves as the backbone for a strategic adventure game where players create accounts, acquire heroes, engage in thrilling rounds, and claim treasures while competing on a leaderboard.
 
 Features

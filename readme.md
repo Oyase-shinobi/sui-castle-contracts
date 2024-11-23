@@ -36,3 +36,33 @@ Compete globally and claim your spot at the top.
 6. In-Game Economy
 
 Players can earn and claim gold or credits through gameplay or cooldown-based rewards.
+
+
+
+
+## Getting Started
+
+1. Setup
+Deploy the sui_castle module on the Sui blockchain.
+
+2. Initialization
+Call the init function to create the game state.
+
+3. Player Onboarding
+Players can join the game by creating accounts using the create_account function.
+
+4. Gameplay
+
+Play rounds, open treasures, and claim rewards.
+Strategize to climb the leaderboard and secure top scores.
+
+5. Future Enhancements
+Advanced hero upgrades and customization.
+Additional game modes and challenges.
+Marketplace integration for hero trading.
+
+## Contributing
+Contributions are welcome! Feel free to fork the repository and submit pull requests for new features or improvements.
+
+## License
+This project is licensed under the MIT License.
